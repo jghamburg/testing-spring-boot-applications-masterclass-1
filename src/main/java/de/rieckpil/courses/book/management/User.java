@@ -1,7 +1,8 @@
 package de.rieckpil.courses.book.management;
 
-import javax.persistence.*;
 import java.time.LocalDateTime;
+
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "users")

@@ -1,7 +1,8 @@
 package de.rieckpil.courses;
 
-import com.amazonaws.services.sqs.AmazonSQSAsync;
-import com.amazonaws.services.sqs.AmazonSQSAsyncClientBuilder;
+import java.io.IOException;
+import java.util.UUID;
+
 import de.rieckpil.courses.book.management.BookRepository;
 import de.rieckpil.courses.initializer.DefaultBookStubsInitializer;
 import de.rieckpil.courses.initializer.WireMockInitializer;
@@ -9,8 +10,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -20,9 +19,6 @@ import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
-
-import java.io.IOException;
-import java.util.UUID;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.awaitility.Awaitility.given;
@@ -36,15 +32,18 @@ import static org.testcontainers.containers.localstack.LocalStackContainer.Servi
 class ApplicationIT {
 
   @Container
-  static PostgreSQLContainer<?> database = new PostgreSQLContainer<>("postgres:12.3")
-    .withDatabaseName("test")
-    .withUsername("duke")
-    .withPassword("s3cret");
+  static PostgreSQLContainer<?> database =
+      new PostgreSQLContainer<>("postgres:12.3")
+          .withDatabaseName("test")
+          .withUsername("duke")
+          .withPassword("s3cret");
 
   @Container
-  static LocalStackContainer localStack = new LocalStackContainer(DockerImageName.parse("localstack/localstack:0.14.5"))
-    .withServices(SQS);
-  // can be removed with version 0.12.17 as LocalStack now has multi-region support https://docs.localstack.cloud/localstack/configuration/#deprecated
+  static LocalStackContainer localStack =
+      new LocalStackContainer(DockerImageName.parse("localstack/localstack:2.0.0"))
+          .withServices(SQS);
+  // can be removed with version 0.12.17 as LocalStack now has multi-region support
+  // https://docs.localstack.cloud/localstack/configuration/#deprecated
   // .withEnv("DEFAULT_REGION", "eu-central-1")
 
   protected static final String QUEUE_NAME = UUID.randomUUID().toString();
@@ -55,21 +54,12 @@ class ApplicationIT {
     registry.add("spring.datasource.password", database::getPassword);
     registry.add("spring.datasource.username", database::getUsername);
     registry.add("sqs.book-synchronization-queue", () -> QUEUE_NAME);
+    registry.add("spring.cloud.aws.credentials.secret-key", () -> "foo");
+    registry.add("spring.cloud.aws.credentials.access-key", () -> "bar");
+    registry.add("spring.cloud.aws.endpoint", () -> localStack.getEndpointOverride(SQS));
   }
 
-  @TestConfiguration
-  static class TestConfig {
-    @Bean
-    public AmazonSQSAsync amazonSQSAsync() {
-      return AmazonSQSAsyncClientBuilder.standard()
-        .withCredentials(localStack.getDefaultCredentialsProvider())
-        .withEndpointConfiguration(localStack.getEndpointConfiguration(SQS))
-        .build();
-    }
-  }
-
-  @Autowired
-  private BookRepository bookRepository;
+  @Autowired private BookRepository bookRepository;
 
   @BeforeAll
   static void beforeAll() throws IOException, InterruptedException {
@@ -78,9 +68,6 @@ class ApplicationIT {
 
   @Test
   void shouldLoadContextAndPrepopulateThreeBooksWhenProfileIsDefault() {
-    given()
-      .await()
-      .atMost(5, SECONDS)
-      .untilAsserted(() -> assertEquals(3, bookRepository.count()));
+    given().await().atMost(5, SECONDS).untilAsserted(() -> assertEquals(3, bookRepository.count()));
   }
 }

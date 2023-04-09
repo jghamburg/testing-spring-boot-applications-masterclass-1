@@ -1,20 +1,16 @@
 package de.rieckpil.courses.book.review;
 
-import javax.validation.constraints.NotEmpty;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 
 public class BookReviewRequest {
 
-  @NotEmpty
-  private String reviewTitle;
+  @NotEmpty private String reviewTitle;
 
-  @NotEmpty
-  private String reviewContent;
+  @NotEmpty private String reviewContent;
 
-  @NotNull
-  @PositiveOrZero
-  private Integer rating;
+  @NotNull @PositiveOrZero private Integer rating;
 
   public BookReviewRequest(String reviewTitle, String reviewContent, Integer rating) {
     this.reviewTitle = reviewTitle;

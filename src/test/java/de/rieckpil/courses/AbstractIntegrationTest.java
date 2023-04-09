@@ -7,8 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import com.amazonaws.services.sqs.AmazonSQSAsync;
-import com.amazonaws.services.sqs.AmazonSQSAsyncClientBuilder;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JOSEObjectType;
@@ -28,15 +26,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.localstack.LocalStackContainer;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import static org.testcontainers.containers.localstack.LocalStackContainer.Service.SQS;
@@ -46,14 +41,17 @@ import static org.testcontainers.containers.localstack.LocalStackContainer.Servi
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public abstract class AbstractIntegrationTest {
 
-  static PostgreSQLContainer<?> database = new PostgreSQLContainer<>("postgres:12.3")
-    .withDatabaseName("test")
-    .withUsername("duke")
-    .withPassword("s3cret");
+  static PostgreSQLContainer<?> database =
+      new PostgreSQLContainer<>("postgres:12.3")
+          .withDatabaseName("test")
+          .withUsername("duke")
+          .withPassword("s3cret");
 
-  static LocalStackContainer localStack = new LocalStackContainer(DockerImageName.parse("localstack/localstack:0.14.5"))
-    .withServices(SQS);
-  // can be removed with version 0.12.17 as LocalStack now has multi-region support https://docs.localstack.cloud/localstack/configuration/#deprecated
+  static LocalStackContainer localStack =
+      new LocalStackContainer(DockerImageName.parse("localstack/localstack:2.0.0"))
+          .withServices(SQS);
+  // can be removed with version 0.12.17 as LocalStack now has multi-region support
+  // https://docs.localstack.cloud/localstack/configuration/#deprecated
   // .withEnv("DEFAULT_REGION", "eu-central-1");
 
   static {
@@ -69,37 +67,22 @@ public abstract class AbstractIntegrationTest {
     registry.add("spring.datasource.password", database::getPassword);
     registry.add("spring.datasource.username", database::getUsername);
     registry.add("sqs.book-synchronization-queue", () -> QUEUE_NAME);
+    registry.add("spring.cloud.aws.credentials.secret-key", () -> "foo");
+    registry.add("spring.cloud.aws.credentials.access-key", () -> "bar");
+    registry.add("spring.cloud.aws.endpoint", () -> localStack.getEndpointOverride(SQS));
   }
 
-  @TestConfiguration
-  static class TestConfig {
+  @Autowired private ReviewRepository reviewRepository;
 
-    @Bean
-    public AmazonSQSAsync amazonSQSAsync() {
-      return AmazonSQSAsyncClientBuilder.standard()
-        .withCredentials(localStack.getDefaultCredentialsProvider())
-        .withEndpointConfiguration(localStack.getEndpointConfiguration(SQS))
-        .build();
-    }
-  }
+  @Autowired private BookRepository bookRepository;
 
-  @Autowired
-  private ReviewRepository reviewRepository;
+  @Autowired private RSAKeyGenerator rsaKeyGenerator;
 
-  @Autowired
-  private BookRepository bookRepository;
+  @Autowired private OAuth2Stubs oAuth2Stubs;
 
-  @Autowired
-  private RSAKeyGenerator rsaKeyGenerator;
+  @Autowired protected OpenLibraryStubs openLibraryStubs;
 
-  @Autowired
-  private OAuth2Stubs oAuth2Stubs;
-
-  @Autowired
-  protected OpenLibraryStubs openLibraryStubs;
-
-  @Autowired
-  private WireMockServer wireMockServer;
+  @Autowired private WireMockServer wireMockServer;
 
   @BeforeAll
   static void beforeAll() throws IOException, InterruptedException {
@@ -127,27 +110,28 @@ public abstract class AbstractIntegrationTest {
   }
 
   private String createJWT(String username, String email) throws JOSEException {
-    JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
-      .type(JOSEObjectType.JWT)
-      .keyID(RSAKeyGenerator.KEY_ID)
-      .build();
+    JWSHeader header =
+        new JWSHeader.Builder(JWSAlgorithm.RS256)
+            .type(JOSEObjectType.JWT)
+            .keyID(RSAKeyGenerator.KEY_ID)
+            .build();
 
-    JWTClaimsSet payload = new JWTClaimsSet.Builder()
-      .issuer(oAuth2Stubs.getIssuerUri())
-      .audience("account")
-      .subject(username)
-      .claim("preferred_username", username)
-      .claim("email", email)
-      .claim("scope", "openid email profile")
-      .claim("azp", "react-client")
-      .claim("realm_access", Map.of("roles", List.of()))
-      .expirationTime(Date.from(Instant.now().plusSeconds(120)))
-      .issueTime(new Date())
-      .build();
+    JWTClaimsSet payload =
+        new JWTClaimsSet.Builder()
+            .issuer(oAuth2Stubs.getIssuerUri())
+            .audience("account")
+            .subject(username)
+            .claim("preferred_username", username)
+            .claim("email", email)
+            .claim("scope", "openid email profile")
+            .claim("azp", "react-client")
+            .claim("realm_access", Map.of("roles", List.of()))
+            .expirationTime(Date.from(Instant.now().plusSeconds(120)))
+            .issueTime(new Date())
+            .build();
 
     SignedJWT signedJWT = new SignedJWT(header, payload);
     signedJWT.sign(new RSASSASigner(rsaKeyGenerator.getPrivateKey()));
     return signedJWT.serialize();
   }
-
 }

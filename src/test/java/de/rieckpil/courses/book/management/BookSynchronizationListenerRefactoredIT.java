@@ -1,18 +1,15 @@
 package de.rieckpil.courses.book.management;
 
-import com.nimbusds.jose.JOSEException;
-import de.rieckpil.courses.AbstractIntegrationTest;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cloud.aws.messaging.core.QueueMessagingTemplate;
-import org.springframework.http.HttpHeaders;
-import org.springframework.messaging.support.GenericMessage;
-import org.springframework.test.web.reactive.server.WebTestClient;
-
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Map;
+
+import com.nimbusds.jose.JOSEException;
+import de.rieckpil.courses.AbstractIntegrationTest;
+import io.awspring.cloud.sqs.operations.SqsTemplate;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
 import static org.awaitility.Awaitility.given;
 
@@ -23,65 +20,73 @@ class BookSynchronizationListenerRefactoredIT extends AbstractIntegrationTest {
 
   static {
     try {
-      VALID_RESPONSE = new String(BookSynchronizationListenerRefactoredIT.class
-        .getClassLoader()
-        .getResourceAsStream("stubs/openlibrary/success-" + ISBN + ".json")
-        .readAllBytes());
+      VALID_RESPONSE =
+          new String(
+              BookSynchronizationListenerRefactoredIT.class
+                  .getClassLoader()
+                  .getResourceAsStream("stubs/openlibrary/success-" + ISBN + ".json")
+                  .readAllBytes());
     } catch (IOException e) {
       e.printStackTrace();
     }
   }
 
-  @Autowired
-  private QueueMessagingTemplate queueMessagingTemplate;
+  @Autowired private SqsTemplate sqsTemplate;
 
-  @Autowired
-  private WebTestClient webTestClient;
+  @Autowired private WebTestClient webTestClient;
 
-  @Autowired
-  private BookRepository bookRepository;
+  @Autowired private BookRepository bookRepository;
 
   @Test
   void shouldGetSuccessWhenClientIsAuthenticated() throws JOSEException {
     this.webTestClient
-      .get()
-      .uri("/api/books/reviews/statistics")
-      .header(HttpHeaders.AUTHORIZATION, "Bearer " + getSignedJWT())
-      .exchange()
-      .expectStatus().is2xxSuccessful();
+        .get()
+        .uri("/api/books/reviews/statistics")
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + getSignedJWT())
+        .exchange()
+        .expectStatus()
+        .is2xxSuccessful();
   }
 
   @Test
   void shouldReturnBookFromAPIWhenApplicationConsumesNewSyncRequest() {
 
     this.webTestClient
-      .get()
-      .uri("/api/books")
-      .exchange()
-      .expectStatus().isOk()
-      .expectBody().jsonPath("$.size()").isEqualTo(0);
+        .get()
+        .uri("/api/books")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectBody()
+        .jsonPath("$.size()")
+        .isEqualTo(0);
 
     this.openLibraryStubs.stubForSuccessfulBookResponse(ISBN, VALID_RESPONSE);
 
-    this.queueMessagingTemplate.send(QUEUE_NAME, new GenericMessage<>(
-      """
+    this.sqsTemplate.send(
+        QUEUE_NAME,
+        """
           {
             "isbn": "%s"
           }
-        """.formatted(ISBN), Map.of("contentType", "application/json")));
+        """.formatted(ISBN));
 
     given()
-      .atMost(Duration.ofSeconds(5))
-      .await()
-      .untilAsserted(() -> {
-        this.webTestClient
-          .get()
-          .uri("/api/books")
-          .exchange()
-          .expectStatus().isOk()
-          .expectBody()
-          .jsonPath("$.size()").isEqualTo(1)
-          .jsonPath("$[0].isbn").isEqualTo(ISBN);
-      });
+        .atMost(Duration.ofSeconds(5))
+        .await()
+        .untilAsserted(
+            () -> {
+              this.webTestClient
+                  .get()
+                  .uri("/api/books")
+                  .exchange()
+                  .expectStatus()
+                  .isOk()
+                  .expectBody()
+                  .jsonPath("$.size()")
+                  .isEqualTo(1)
+                  .jsonPath("$[0].isbn")
+                  .isEqualTo(ISBN);
+            });
   }
 }

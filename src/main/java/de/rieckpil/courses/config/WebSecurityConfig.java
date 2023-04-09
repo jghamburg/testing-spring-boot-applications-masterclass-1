@@ -2,34 +2,46 @@ package de.rieckpil.courses.config;
 
 import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
 import org.springframework.boot.actuate.health.HealthEndpoint;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
-@EnableGlobalMethodSecurity(prePostEnabled = true)
-public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+@EnableMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig {
 
-  @Override
-  protected void configure(HttpSecurity http) throws Exception {
-    http
-      .authorizeRequests(authorize -> authorize
-        .mvcMatchers(HttpMethod.GET, "/api/books").permitAll()
-        .mvcMatchers(HttpMethod.GET, "/api/books/reviews").permitAll()
-        .mvcMatchers("/api/**").authenticated()
-        .requestMatchers(EndpointRequest.to(HealthEndpoint.class)).permitAll()
-      )
-      .sessionManagement()
-      .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-      .and()
-      .cors()
-      .and()
-      .csrf().disable()
-      .oauth2ResourceServer(oauth2 ->
-        oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(new CustomAuthenticationConverter())));
+  @Bean
+  public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity) throws Exception {
+    httpSecurity
+        .authorizeHttpRequests(
+            authorize ->
+                authorize
+                    .requestMatchers(HttpMethod.GET, "/api/books")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/books/reviews")
+                    .permitAll()
+                    .requestMatchers("/api/**")
+                    .authenticated()
+                    .requestMatchers(EndpointRequest.to(HealthEndpoint.class))
+                    .permitAll()
+                    .anyRequest()
+                    .permitAll())
+        .sessionManagement()
+        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+        .and()
+        .cors()
+        .and()
+        .csrf()
+        .disable()
+        .oauth2ResourceServer(
+            oauth2 ->
+                oauth2.jwt(
+                    jwt -> jwt.jwtAuthenticationConverter(new CustomAuthenticationConverter())));
+
+    return httpSecurity.build();
   }
-
 }

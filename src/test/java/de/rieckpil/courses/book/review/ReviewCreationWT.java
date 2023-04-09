@@ -1,6 +1,7 @@
 package de.rieckpil.courses.book.review;
 
 import java.io.File;
+import java.time.Duration;
 import java.util.logging.Level;
 
 import com.codeborne.selenide.CollectionCondition;
@@ -24,20 +25,15 @@ import org.testcontainers.containers.BrowserWebDriverContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.utility.DockerImageName;
 
-import static com.codeborne.selenide.Selenide.$;
-import static com.codeborne.selenide.Selenide.$$;
-import static com.codeborne.selenide.Selenide.open;
-import static com.codeborne.selenide.Selenide.screenshot;
+import static com.codeborne.selenide.Selenide.*;
 import static com.codeborne.selenide.WebDriverRunner.getWebDriver;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class ReviewCreationWT extends AbstractWebTest {
 
-  @Autowired
-  private BookRepository bookRepository;
+  @Autowired private BookRepository bookRepository;
 
-  @Autowired
-  private ReviewRepository reviewRepository;
+  @Autowired private ReviewRepository reviewRepository;
 
   private static final LoggingPreferences LOG_PREFERENCES;
   private static final ChromeOptions CHROME_OPTIONS;
@@ -49,30 +45,35 @@ class ReviewCreationWT extends AbstractWebTest {
     CHROME_OPTIONS = new ChromeOptions();
     CHROME_OPTIONS.addArguments("--no-sandbox");
     CHROME_OPTIONS.addArguments("--disable-dev-shm-usage");
+    CHROME_OPTIONS.addArguments("--remote-allow-origins=*");
 
     CHROME_OPTIONS.setCapability("goog:loggingPrefs", LOG_PREFERENCES);
   }
 
   @Container
-  static BrowserWebDriverContainer<?> webDriverContainer = new BrowserWebDriverContainer<>(
-    // Workaround to allow running the tests on an Apple M1
-    System.getProperty("os.arch").equals("aarch64") ?
-      DockerImageName.parse("seleniarm/standalone-chromium")
-        .asCompatibleSubstituteFor("selenium/standalone-chrome")
-      : DockerImageName.parse("selenium/standalone-chrome:4.3.0-20220726")
-  )
-    .withRecordingMode(BrowserWebDriverContainer.VncRecordingMode.RECORD_ALL, new File("./target"))
-    .withCapabilities(CHROME_OPTIONS);
+  static BrowserWebDriverContainer<?> webDriverContainer =
+      new BrowserWebDriverContainer<>(
+              // Workaround to allow running the tests on an Apple M1
+              System.getProperty("os.arch").equals("aarch64")
+                  ? DockerImageName.parse("seleniarm/standalone-chromium:latest")
+                      .asCompatibleSubstituteFor("selenium/standalone-chrome")
+                  : DockerImageName.parse("selenium/standalone-chrome:latest"))
+          .withRecordingMode(BrowserWebDriverContainer.VncRecordingMode.SKIP, new File("./target"))
+          .withCapabilities(CHROME_OPTIONS);
 
   private static final String ISBN = "9780321751041";
 
   @BeforeEach
   void setup() {
     Configuration.timeout = 2000;
-    // TODO: Improve platform independence, see Testcontainers.exposeHostPorts https://rieckpil.de/write-concise-web-tests-with-selenide-for-java-projects/
-    Configuration.baseUrl = SystemUtils.IS_OS_LINUX ? "http://172.17.0.1:8080" : "http://host.docker.internal:8080";
+    // TODO: Improve platform independence, see Testcontainers.exposeHostPorts
+    // https://rieckpil.de/write-concise-web-tests-with-selenide-for-java-projects/
+    Configuration.baseUrl =
+        SystemUtils.IS_OS_LINUX ? "http://172.17.0.1:8080" : "http://host.docker.internal:8080";
 
-    RemoteWebDriver remoteWebDriver = webDriverContainer.getWebDriver();
+    RemoteWebDriver remoteWebDriver =
+        new RemoteWebDriver(webDriverContainer.getSeleniumAddress(), CHROME_OPTIONS, false);
+    remoteWebDriver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
     WebDriverRunner.setWebDriver(remoteWebDriver);
 
     createBook();
@@ -102,8 +103,12 @@ class ReviewCreationWT extends AbstractWebTest {
     $("#all-reviews").click();
     $("#reviews").should(Condition.appear);
     $$("#reviews > div").shouldHave(CollectionCondition.size(1));
-    $("#review-0 .review-title").shouldHave(Condition.text("Great Book about Software Development with Java!"));
-    $("#review-0 .review-content").shouldHave(Condition.text("I really enjoyed reading this book. It contains great examples and discusses also advanced topics."));
+    $("#review-0 .review-title")
+        .shouldHave(Condition.text("Great Book about Software Development with Java!"));
+    $("#review-0 .review-content")
+        .shouldHave(
+            Condition.text(
+                "I really enjoyed reading this book. It contains great examples and discusses also advanced topics."));
   }
 
   private void submitReview() {
@@ -116,7 +121,9 @@ class ReviewCreationWT extends AbstractWebTest {
     $$("#book-rating > i").get(4).click();
 
     $("#review-title").val("Great Book about Software Development with Java!");
-    $("#review-content").val("I really enjoyed reading this book. It contains great examples and discusses also advanced topics.");
+    $("#review-content")
+        .val(
+            "I really enjoyed reading this book. It contains great examples and discusses also advanced topics.");
 
     screenshot("before_submit_review");
 
@@ -143,7 +150,8 @@ class ReviewCreationWT extends AbstractWebTest {
     book.setTitle("Joyful testing with Spring Boot");
     book.setDescription("Writing unit and integration tests for Spring Boot applications");
     book.setAuthor("rieckpil");
-    book.setThumbnailUrl("https://rieckpil.de/wp-content/uploads/2020/08/tsbam_introduction_thumbnail-585x329.png.webp");
+    book.setThumbnailUrl(
+        "https://rieckpil.de/wp-content/uploads/2020/08/tsbam_introduction_thumbnail-585x329.png.webp");
     book.setGenre("Software Development");
 
     this.bookRepository.save(book);
